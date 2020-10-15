@@ -18,7 +18,9 @@ function lcDisplayName(firstname, lastname){
 }
 
 function lcMail(firstname, lastname, domain){
-    return lcUid(firstname, lastname)+domain;
+    var ascii_firstname = removeDiacritics(firstname).toLowerCase().replace(/[^a-z]/g, '');
+    var ascii_lastname = removeDiacritics(lastname).toLowerCase().replace(/[^a-z]/g, '');
+    return ascii_firstname+'.'+ascii_lastname+domain;
 }
 
 function lcUidNumber(firstname, lastname, minuid, maxuid){
