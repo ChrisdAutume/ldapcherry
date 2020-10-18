@@ -235,12 +235,76 @@ class Backend(ldapcherry.backend.backendLdap.Backend):
         super(Backend, self).set_attrs(username, attrs)
 
     def add_to_groups(self, username, groups):
-        ad_groups = self._build_groupdn(groups)
-        super(Backend, self).add_to_groups(username, ad_groups)
+        groups = self._build_groupdn(groups)
+        ldap_client = self._bind()
+        # recover dn of the user and his attributes
+        tmp = self._get_user(self._byte_p2(username), ALL_ATTRS)
+        dn = tmp[0]
+        attrs = tmp[1]
+        attrs['dn'] = dn
+        self._normalize_group_attrs(attrs)
+        dn = self._byte_p2(tmp[0])
+        # add user to all groups
+        for group in groups:
+            group = self._byte_p2(group)
+            # iterate on group membership attributes
+            try:
+                ldap_client.modify_s(group, [
+                (ldap.MOD_ADD, 'member', [dn]),
+            ])
+            # if already member, not a big deal, just log it and continue
+            except (ldap.TYPE_OR_VALUE_EXISTS, ldap.ALREADY_EXISTS) as e:
+                self._logger(
+                    severity=logging.INFO,
+                    msg="%(backend)s: user '%(user)s'"
+                        " already member of group '%(group)s'" % {
+                            'user': username,
+                            'group': self._uni(group),
+                            'backend': self.backend_name
+                            }
+                )
+            except ldap.NO_SUCH_OBJECT as e:
+                raise GroupDoesntExist(group, self.backend_name)
+            except Exception as e:
+                ldap_client.unbind_s()
+                self._exception_handler(e)
+        ldap_client.unbind_s()
+
+        #super(Backend, self).add_to_groups(username, ad_groups)
 
     def del_from_groups(self, username, groups):
-        ad_groups = self._build_groupdn(groups)
-        super(Backend, self).del_from_groups(username, ad_groups)
+        groups = self._build_groupdn(groups)
+        ldap_client = self._bind()
+        # recover dn of the user and his attributes
+        tmp = self._get_user(self._byte_p2(username), ALL_ATTRS)
+        dn = tmp[0]
+        attrs = tmp[1]
+        attrs['dn'] = dn
+        self._normalize_group_attrs(attrs)
+        dn = self._byte_p2(tmp[0])
+        # add user to all groups
+        for group in groups:
+            group = self._byte_p2(group)
+            # iterate on group membership attributes
+            try:
+                ldap_client.modify_s(group, [
+                    (ldap.MOD_DELETE, 'member', [dn]),
+                ])
+            except ldap.NO_SUCH_ATTRIBUTE as e:
+                self._logger(
+                    severity=logging.INFO,
+                    msg="%(backend)s: user '%(user)s'"
+                    " wasn't member of group '%(group)s'" % {
+                        'user': username,
+                        'group': self._uni(group),
+                        'backend': self.backend_name
+                        }
+                    )
+            except Exception as e:
+                ldap_client.unbind_s()
+                self._exception_handler(e)
+        ldap_client.unbind_s()
+        #super(Backend, self).del_from_groups(username, ad_groups)
 
     def get_groups(self, username):
         username = ldap.filter.escape_filter_chars(username)
